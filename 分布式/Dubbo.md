@@ -50,3 +50,546 @@ Dubbo 强大的服务治理能力不仅体现在核心框架上，还包括其�
 ### 面向云原生设计
 
 Dubbo 从设计上是完全遵循云原生微服务开发理念的，这体现在多个方面，首先是对云原生基础设施与部署架构的支持，包括 容器、Kubernetes 等，Dubbo Mesh 总体解决方案也在 3.1 版本正式发布；另一方面，Dubbo 众多核心组件都已面向云原生升级，包括 Triple 协议、统一路由规则、对多语言的支持。
+
+## 4.Springboot+Dubbo+Nacos开发实战
+
+### dubbo相关概念
+
+![arch-service-discovery](asserts/architecture.png)
+
+> 节点说明
+
+| 节点      | 角色说明                               |
+| --------- | -------------------------------------- |
+| Provider  | 暴露服务的服务提供方                   |
+| Consumer  | 调用远程服务的服务消费方               |
+| Registry  | 服务注册与发现的注册中心               |
+| Monitor   | 统计服务的调用次数和调用时间的监控中心 |
+| Container | 服务运行容器                           |
+
+> 调用关系说明
+
+1.服务容器负责启动，加载，运行服务提供者。
+2.服务提供者在启动时，向注册中心注册自己提供的服务。
+3.服务消费者在启动时，向注册中心订阅自己所需的服务。
+4.注册中心返回服务提供者地址列表给消费者，如果有变更，注册中心将基于长连接推送变更数据给消费者。
+5.服务消费者，从提供者地址列表中，基于软负载均衡算法，选一台提供者进行调用，如果调用失败，再选另一台调用。
+6.服务消费者和提供者，在内存中累计调用次数和调用时间，定时每分钟发送一次统计数据到监控中心。
+
+### Nacos环境准备
+
+启动Nacos
+
+startup.cmd -m standalone
+
+![image-20230114171034046](asserts/image-20230114171034046.png)
+
+### Nacos与dubbo整合
+
+### 版本依赖关系
+
+https://github.com/alibaba/spring-cloud-alibaba/wiki/%E7%89%88%E6%9C%AC%E8%AF%B4%E6%98%8E
+
+> 为了后续方便使用SpringCloud Alibaba进行开发, 首先创建一个pom类型的父项目, 主要用于项目技术栈版本管理, 创建一个maven项目,名称为spring-cloud-alibaba-example, 去除src文件, 修改pom文件
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>ah.wideth</groupId>
+    <artifactId>spring-cloud-alibaba-example</artifactId>
+    <version>1.0-SNAPSHOT</version>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>2.3.12.RELEASE</version>
+        <relativePath/> <!-- lookup parent from repository -->
+    </parent>
+
+    <packaging>pom</packaging>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <java.version>1.8</java.version>
+        <spring-cloud.version>Hoxton.SR12</spring-cloud.version>
+        <com-alibaba-cloud.version>2.2.7.RELEASE</com-alibaba-cloud.version>
+    </properties>
+
+    <!--对项目版本进行管理-->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>com.alibaba.cloud</groupId>
+                <artifactId>spring-cloud-alibaba-dependencies</artifactId>
+                <version>${com-alibaba-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>
+```
+
+> 后续创建的项目都放到此目录下, 只需要声明groupId和artifactId, 会自动引用父项目spring-cloud-alibaba-example的版本。与其说是父项目, 不如说是根项目: 因为下面每学习一个新的技术, 就会新建一个真正的父项目, 而在对应的父项目下面又会创建许多的子项目
+
+![在这里插入图片描述](asserts/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAd2jmn5LlhavkuZ0=,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center.png)
+
+dubbo整合nacos案例
+
+> 本文的案例是在上文nacos开发实例的基础之上继续编写的。下面开始创建我们的项目，贴上我的目录结构。
+
+![img](asserts/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAd2jmn5LlhavkuZ0=,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center-16736875922788.png)
+
+> 模块说明
+
+- public-api公共接口模块（接口），供服务消费者和服务提供者调用。
+
+- dubbo-provider服务提供者模块（接口实现类），引入了public-api模块。
+
+- dubbo-consumer服务消费者模块（controller），引入了public-api模块。
+
+- 消费者和提供者通过公共接口模块进行rpc远程调用。
+
+> 父工程pom文件
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <artifactId>spring-cloud-alibaba-example</artifactId>
+        <groupId>ah.wideth</groupId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+
+    <modules>
+        <module>public-api</module>
+        <module>dubbo-provider</module>
+        <module>dubbo-consumer</module>
+    </modules>
+
+    <artifactId>dubbo-nacos-example</artifactId>
+    <name>dubbo-nacos-example</name>
+    <description>duboo与nacos整合的父工程</description>
+    <packaging>pom</packaging>
+
+    <properties>
+        <java.version>1.8</java.version>
+        <project.build.sourceEncoding>utf-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <dubbo.version>2.7.13</dubbo.version>
+        <nacos.version>1.4.1</nacos.version>
+    </properties>
+
+
+    <dependencies>
+
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+            <!--解决nacos-client2.0报错的问题-->
+            <exclusions>
+                <exclusion>
+                    <artifactId>nacos-client</artifactId>
+                    <groupId>com.alibaba.nacos</groupId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+
+        <!--dubbo相关-->
+        <dependency>
+            <groupId>org.apache.dubbo</groupId>
+            <artifactId>dubbo-spring-boot-starter</artifactId>
+            <version>${dubbo.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.dubbo</groupId>
+            <artifactId>dubbo-registry-nacos</artifactId>
+            <version>${dubbo.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.alibaba.nacos</groupId>
+            <artifactId>nacos-client</artifactId>
+            <version>${nacos.version}</version>
+        </dependency>
+
+        <!-- 解决dubbo2.7.13jar包冲突问题-->
+        <dependency>
+            <groupId>com.alibaba.spring</groupId>
+            <artifactId>spring-context-support</artifactId>
+            <version>1.0.11</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.dubbo</groupId>
+            <artifactId>dubbo</artifactId>
+            <version>${dubbo.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.springframework</groupId>
+                    <artifactId>spring</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>javax.servlet</groupId>
+                    <artifactId>servlet-api</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>log4j</groupId>
+                    <artifactId>log4j</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        
+    </dependencies>
+
+</project>
+```
+
+![在这里插入图片描述](asserts/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAd2jmn5LlhavkuZ0=,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center-167368771488510.png)
+
+### 创建公共接口模块
+
+> pom文件
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <artifactId>dubbo-nacos-example</artifactId>
+        <groupId>ah.wideth</groupId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>public-api</artifactId>
+    <name>public-api</name>
+    <description>api公用接口</description>
+    <packaging>jar</packaging>
+
+    <properties>
+        <java.version>1.8</java.version>
+        <project.build.sourceEncoding>utf-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
+```
+
+![在这里插入图片描述](asserts/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAd2jmn5LlhavkuZ0=,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center-167368777281312.png)
+
+> 公共接口模块里面只有一个接口，没有配置文件，打jar包(因为在实际开发中，各个模块是分隔开的，需要引入公共接口的jar包)
+
+```java
+package ah.wideth.api;
+
+/**
+ * 让生产者和服务消
+ * 费者来使用这个接口
+ */
+public interface InfoService {
+
+    String getInfo();
+}
+```
+
+![在这里插入图片描述](asserts/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAd2jmn5LlhavkuZ0=,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center-167368789292114.png)
+
+### 创建服务提供者模块
+
+> pom文件
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <artifactId>dubbo-nacos-example</artifactId>
+        <groupId>ah.wideth</groupId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>dubbo-provider</artifactId>
+    <name>dubbo-provider</name>
+    <description>dubbo的服务提供者模块</description>
+
+    <properties>
+        <java.version>1.8</java.version>
+        <project.build.sourceEncoding>utf-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    </properties>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!--引入公共接口模块-->
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>public-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
+```
+
+> application.yml配置文件
+
+```yaml
+server:
+  port: 8180
+
+spring:
+  application:
+    name: dubbo-provider
+
+dubbo:
+  registry:
+    address: nacos://127.0.0.1:8848 #注册地址
+  application:
+    name: dubbo-provider #应用名
+  protocol:
+    name: dubbo #dubbo协议
+    port: 20880 #协议端口
+  scan:
+    base-packages: ah.wideth.impl #扫包范围
+  provider:
+    timeout: 30000 #超时时间
+```
+
+> 接口实现类，该类实现了上面我们在公共接口模块创建的接口
+
+```java
+package ah.wideth.impl;
+
+import ah.wideth.api.InfoService;
+import org.apache.dubbo.config.annotation.DubboService;
+import org.springframework.stereotype.Component;
+
+
+// dubbo提供的Service注解，用于声明对外暴露服务
+// Service引入的是org.apache.dubbo.config.annotation.Service包
+@Component
+@DubboService
+public class InfoServiceImpl implements InfoService {
+
+    @Override
+    public String getInfo() {
+
+        return "hello，这里是dubbo-provider模块！";
+    }
+}
+```
+
+> 服务提供者启动类
+
+```java
+package ah.wideth;
+
+import org.apache.dubbo.config.spring.context.annotation.EnableDubbo;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+
+
+@EnableDubbo
+@EnableDiscoveryClient
+@SpringBootApplication
+public class DubboProviderApplication {
+
+    public static void main(String[] args) {
+
+        SpringApplication.run(DubboProviderApplication.class, args);
+        System.out.println("dubbo服务提供者8180启动了");
+    }
+
+}
+```
+
+### 创建服务消费者模块
+
+> pom文件
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <artifactId>dubbo-nacos-example</artifactId>
+        <groupId>ah.wideth</groupId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>dubbo-consumer</artifactId>
+    <name>dubbo-consumer</name>
+    <description>dubbo的服务消费者模块</description>
+
+    <properties>
+        <java.version>1.8</java.version>
+        <project.build.sourceEncoding>utf-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    </properties>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!--引入公共接口模块-->
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>public-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+
+    </build>
+</project>
+```
+
+> application.yml配置文件
+
+```yaml
+server:
+  port: 8181
+
+spring:
+  application:
+    name: dubbo-consumer
+
+dubbo:
+  registry:
+    address: nacos://127.0.0.1:8848 #注册地址
+  application:
+    name: dubbo-consumer #应用名
+  consumer:
+    timeout: 30000 #超时时间
+```
+
+> controller，调用公共接口模块创建的接口
+
+```java
+package ah.wideth.controller;
+
+import ah.wideth.api.InfoService;
+import org.apache.dubbo.config.annotation.DubboReference;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class InfoController {
+
+    //dumbo提供的Reference注解，用于调用远程服务
+    @DubboReference(check = false)
+    private InfoService infoService;
+
+    @GetMapping("/getInfo")
+    public String getInfo(){
+
+        return infoService.getInfo();
+    }
+}
+```
+
+> 服务消费者启动类
+
+```java
+package ah.wideth;
+
+import org.apache.dubbo.config.spring.context.annotation.EnableDubbo;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+
+
+@EnableDubbo
+@EnableDiscoveryClient
+@SpringBootApplication
+public class DubboConsumerApplication {
+
+    public static void main(String[] args) {
+
+        SpringApplication.run(DubboConsumerApplication.class, args);
+        System.out.println("dubbo服务消费者8181启动了");
+    }
+
+}
+```
+
+### 服务调用测试
+
+> 打开Nacos控制面板查看注册中心中的服务
+
+![在这里插入图片描述](asserts/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAd2jmn5LlhavkuZ0=,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center-167368820325416.png)
+
+> 启动nacos，启动服务提供者和服务消费者，调用服务消费者的getInfo方法，服务提供者会返回结果
+
+![img](asserts/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAd2jmn5LlhavkuZ0=,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center-167368822555318.png)
+
+整合过程参考：https://blog.csdn.net/qq_31960623/article/details/123942994
