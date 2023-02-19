@@ -144,13 +144,13 @@ https://github.com/alibaba/spring-cloud-alibaba/wiki/%E7%89%88%E6%9C%AC%E8%AF%B4
 
 > 后续创建的项目都放到此目录下, 只需要声明groupId和artifactId, 会自动引用父项目spring-cloud-alibaba-example的版本。与其说是父项目, 不如说是根项目: 因为下面每学习一个新的技术, 就会新建一个真正的父项目, 而在对应的父项目下面又会创建许多的子项目
 
-![在这里插入图片描述](asserts/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAd2jmn5LlhavkuZ0=,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center.png)
+![在这里插入图片描述](asserts/pic_center.png)
 
 dubbo整合nacos案例
 
 > 本文的案例是在上文nacos开发实例的基础之上继续编写的。下面开始创建我们的项目，贴上我的目录结构。
 
-![img](asserts/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAd2jmn5LlhavkuZ0=,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center-16736875922788.png)
+![img](asserts/pic_center-16736875922788.png)
 
 > 模块说明
 
@@ -262,7 +262,7 @@ dubbo整合nacos案例
 </project>
 ```
 
-![在这里插入图片描述](asserts/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAd2jmn5LlhavkuZ0=,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center-167368771488510.png)
+![在这里插入图片描述](asserts/pic_center-167368771488510.png)
 
 ### 创建公共接口模块
 
@@ -313,7 +313,7 @@ dubbo整合nacos案例
 </project>
 ```
 
-![在这里插入图片描述](asserts/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAd2jmn5LlhavkuZ0=,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center-167368777281312.png)
+![在这里插入图片描述](asserts/pic_center-167368777281312.png)
 
 > 公共接口模块里面只有一个接口，没有配置文件，打jar包(因为在实际开发中，各个模块是分隔开的，需要引入公共接口的jar包)
 
@@ -330,7 +330,7 @@ public interface InfoService {
 }
 ```
 
-![在这里插入图片描述](asserts/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAd2jmn5LlhavkuZ0=,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center-167368789292114.png)
+![在这里插入图片描述](asserts/pic_center-167368789292114.png)
 
 ### 创建服务提供者模块
 
@@ -586,10 +586,10 @@ public class DubboConsumerApplication {
 
 > 打开Nacos控制面板查看注册中心中的服务
 
-![在这里插入图片描述](asserts/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAd2jmn5LlhavkuZ0=,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center-167368820325416.png)
+![在这里插入图片描述](asserts/pic_center-167368820325416.png)
 
 > 启动nacos，启动服务提供者和服务消费者，调用服务消费者的getInfo方法，服务提供者会返回结果
 
-![img](asserts/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBAd2jmn5LlhavkuZ0=,size_20,color_FFFFFF,t_70,g_se,x_16#pic_center-167368822555318.png)
+![img](asserts/pic_center-167368822555318.png)
 
 整合过程参考：https://blog.csdn.net/qq_31960623/article/details/123942994
